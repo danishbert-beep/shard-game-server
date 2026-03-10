@@ -13,6 +13,23 @@ const io = new Server(server, {
 
 let players = {};
 
+
+const ROUND_DURATION_MS = 30000;
+let roundStartTime = Date.now();
+
+function getTimeLeftMs() {
+  const elapsed = Date.now() - roundStartTime;
+  return Math.max(0, ROUND_DURATION_MS - elapsed);
+}
+
+function resetRoundTimer() {
+  roundStartTime = Date.now();
+  io.emit("roundTimerSync", {
+    roundStartTime,
+    roundDurationMs: ROUND_DURATION_MS
+  });
+}
+
 function getUsedPlayerNums() {
   return Object.values(players).map(player => player.playerNum);
 }
@@ -71,8 +88,13 @@ io.on("connection", socket => {
     topLeftX: 0,
     topLeftY: 0,
     attacking: false
-  };
+  }; 
 
+  socket.emit("assignPlayerNum", playerNum);
+socket.emit("roundTimerSync", {
+  roundStartTime,
+  roundDurationMs: ROUND_DURATION_MS
+});
   socket.emit("assignPlayerNum", playerNum);
   socket.emit("currentPlayers", players);
   socket.emit("machineOffsets", buildMachineOffsets());

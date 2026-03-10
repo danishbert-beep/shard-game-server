@@ -14,7 +14,7 @@ const io = new Server(server, {
 let players = {};
 
 const ROUND_DURATION_MS = 30000;
-let roundStartTime = Date.now();
+let roundStartTime = null;
 
 function resetRoundTimer() {
   roundStartTime = Date.now();
@@ -98,23 +98,24 @@ io.on("connection", socket => {
   });
 
   socket.emit("assignPlayerNum", playerNum);
-
   socket.emit("currentPlayers", players);
-
   socket.emit("machineOffsets", buildMachineOffsets());
 
-  console.log("SENDING roundTimerSync TO NEW CLIENT", {
-    socketId: socket.id,
-    roundStartTime,
-    roundDurationMs: ROUND_DURATION_MS,
-    now: Date.now(),
-    elapsed: Date.now() - roundStartTime
-  });
+  // only send timer if a round already exists
+  if (roundStartTime !== null) {
+    console.log("SENDING EXISTING roundTimerSync TO NEW CLIENT", {
+      socketId: socket.id,
+      roundStartTime,
+      roundDurationMs: ROUND_DURATION_MS,
+      now: Date.now(),
+      elapsed: Date.now() - roundStartTime
+    });
 
-  socket.emit("roundTimerSync", {
-    roundStartTime,
-    roundDurationMs: ROUND_DURATION_MS
-  });
+    socket.emit("roundTimerSync", {
+      roundStartTime,
+      roundDurationMs: ROUND_DURATION_MS
+    });
+  }
 
   socket.broadcast.emit("playerJoined", {
     id: socket.id,
@@ -124,7 +125,7 @@ io.on("connection", socket => {
     attacking: false
   });
 
-  // start a fresh round when both players are present
+  // start timer only when 2 players are connected
   if (Object.keys(players).length === 2) {
     console.log("TWO PLAYERS PRESENT - RESETTING ROUND");
     resetRoundTimer();
@@ -169,10 +170,14 @@ io.on("connection", socket => {
   socket.on("requestRoundReset", () => {
     console.log("ROUND RESET REQUESTED", {
       socketId: socket.id,
-      now: Date.now()
+      now: Date.now(),
+      playerCount: Object.keys(players).length
     });
 
-    resetRoundTimer();
+    // only allow resets if 2 players are still present
+    if (Object.keys(players).length === 2) {
+      resetRoundTimer();
+    }
   });
 
   // -------------------------
@@ -191,11 +196,17 @@ io.on("connection", socket => {
       playerCount: Object.keys(players).length
     });
 
+    // no full match anymore, so clear active round
+    if (Object.keys(players).length < 2) {
+      roundStartTime = null;
+      console.log("LESS THAN 2 PLAYERS - CLEARED roundStartTime");
+    }
+
     io.emit("playerDisconnected", socket.id);
   });
 });
 
 server.listen(process.env.PORT || 3000, () => {
-  console.log("SERVER VERSION: fresh round timer build");
+  console.log("SERVER VERSION: two-player round timer build");
   console.log("server running");
 });

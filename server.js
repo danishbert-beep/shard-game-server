@@ -15,18 +15,19 @@ let players = {};
 
 io.on("connection", socket => {
 
-  console.log("player joined", socket.id);
+  const playerCount = Object.keys(players).length;
 
-  players[socket.id] = { x: 0, y: 0 };
+  const role = playerCount === 0 ? "p1" : "p2";
 
-  socket.emit("currentPlayers", players);
-
-  socket.broadcast.emit("playerJoined", {
-    id: socket.id,
+  players[socket.id] = {
+    role,
     x: 0,
     y: 0
-  });
+  };
 
+  socket.emit("assignRole", role);
+
+});
   socket.on("move", data => {
 
     if (!players[socket.id]) return;

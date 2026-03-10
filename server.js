@@ -19,6 +19,11 @@ let roundStartTime = Date.now();
 function resetRoundTimer() {
   roundStartTime = Date.now();
 
+  console.log("RESET TIMER", {
+    roundStartTime,
+    iso: new Date(roundStartTime).toISOString()
+  });
+
   io.emit("roundTimerSync", {
     roundStartTime,
     roundDurationMs: ROUND_DURATION_MS
@@ -70,10 +75,10 @@ setInterval(() => {
 }, 1000 / 60);
 
 io.on("connection", socket => {
-
   const playerNum = getAvailablePlayerNum();
 
   if (playerNum === null) {
+    console.log("SERVER FULL - rejecting socket", socket.id);
     socket.emit("serverFull");
     socket.disconnect();
     return;
@@ -86,11 +91,25 @@ io.on("connection", socket => {
     attacking: false
   };
 
+  console.log("PLAYER CONNECTED", {
+    socketId: socket.id,
+    playerNum,
+    playerCount: Object.keys(players).length
+  });
+
   socket.emit("assignPlayerNum", playerNum);
 
   socket.emit("currentPlayers", players);
 
   socket.emit("machineOffsets", buildMachineOffsets());
+
+  console.log("SENDING roundTimerSync TO NEW CLIENT", {
+    socketId: socket.id,
+    roundStartTime,
+    roundDurationMs: ROUND_DURATION_MS,
+    now: Date.now(),
+    elapsed: Date.now() - roundStartTime
+  });
 
   socket.emit("roundTimerSync", {
     roundStartTime,
@@ -107,6 +126,7 @@ io.on("connection", socket => {
 
   // start a fresh round when both players are present
   if (Object.keys(players).length === 2) {
+    console.log("TWO PLAYERS PRESENT - RESETTING ROUND");
     resetRoundTimer();
   }
 
@@ -114,7 +134,6 @@ io.on("connection", socket => {
   // movement sync
   // -------------------------
   socket.on("move", data => {
-
     if (!players[socket.id]) return;
 
     players[socket.id] = {
@@ -127,14 +146,12 @@ io.on("connection", socket => {
       playerNum: players[socket.id].playerNum,
       ...data
     });
-
   });
 
   // -------------------------
   // attack sync
   // -------------------------
   socket.on("attackState", data => {
-
     if (!players[socket.id]) return;
 
     players[socket.id].attacking = !!data.attacking;
@@ -144,29 +161,41 @@ io.on("connection", socket => {
       playerNum: players[socket.id].playerNum,
       attacking: players[socket.id].attacking
     });
-
   });
 
   // -------------------------
   // round reset request
   // -------------------------
   socket.on("requestRoundReset", () => {
+    console.log("ROUND RESET REQUESTED", {
+      socketId: socket.id,
+      now: Date.now()
+    });
+
     resetRoundTimer();
   });
 
   // -------------------------
   // disconnect
   // -------------------------
-  socket.on("disconnect", () => {
+  socket.on("disconnect", reason => {
+    console.log("PLAYER DISCONNECTED", {
+      socketId: socket.id,
+      playerNum: players[socket.id]?.playerNum,
+      reason
+    });
 
     delete players[socket.id];
 
+    console.log("PLAYERS REMAINING", {
+      playerCount: Object.keys(players).length
+    });
+
     io.emit("playerDisconnected", socket.id);
-
   });
-
 });
 
 server.listen(process.env.PORT || 3000, () => {
+  console.log("SERVER VERSION: fresh round timer build");
   console.log("server running");
 });

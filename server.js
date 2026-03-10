@@ -13,11 +13,27 @@ const io = new Server(server, {
 
 let players = {};
 
-io.on("connection", socket => {
+function getUsedPlayerNums() {
+  return Object.values(players).map(player => player.playerNum);
+}
 
-  // determine player number
-  const playerCount = Object.keys(players).length;
-  const playerNum = playerCount === 0 ? 1 : 2;
+function getAvailablePlayerNum() {
+  const used = getUsedPlayerNums();
+
+  if (!used.includes(1)) return 1;
+  if (!used.includes(2)) return 2;
+
+  return null;
+}
+
+io.on("connection", socket => {
+  const playerNum = getAvailablePlayerNum();
+
+  if (playerNum === null) {
+    socket.emit("serverFull");
+    socket.disconnect();
+    return;
+  }
 
   players[socket.id] = {
     playerNum,
@@ -25,13 +41,9 @@ io.on("connection", socket => {
     y: 0
   };
 
-  // send full player list to the new player
+  socket.emit("assignPlayerNum", playerNum);
   socket.emit("currentPlayers", players);
 
-  // tell the new player what they are
-  socket.emit("assignPlayerNum", playerNum);
-
-  // notify everyone else a player joined
   socket.broadcast.emit("playerJoined", {
     id: socket.id,
     playerNum,
@@ -40,7 +52,6 @@ io.on("connection", socket => {
   });
 
   socket.on("move", data => {
-
     if (!players[socket.id]) return;
 
     players[socket.id] = {
@@ -53,17 +64,12 @@ io.on("connection", socket => {
       playerNum: players[socket.id].playerNum,
       ...data
     });
-
   });
 
   socket.on("disconnect", () => {
-
     delete players[socket.id];
-
     io.emit("playerDisconnected", socket.id);
-
   });
-
 });
 
 server.listen(process.env.PORT || 3000, () => {

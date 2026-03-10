@@ -15,27 +15,42 @@ let players = {};
 
 io.on("connection", socket => {
 
+  // determine player number
   const playerCount = Object.keys(players).length;
-
-  const role = playerCount === 0 ? "p1" : "p2";
+  const playerNum = playerCount === 0 ? 1 : 2;
 
   players[socket.id] = {
-    role,
+    playerNum,
     x: 0,
     y: 0
   };
 
-  socket.emit("assignRole", role);
+  // send full player list to the new player
+  socket.emit("currentPlayers", players);
 
-});
+  // tell the new player what they are
+  socket.emit("assignPlayerNum", playerNum);
+
+  // notify everyone else a player joined
+  socket.broadcast.emit("playerJoined", {
+    id: socket.id,
+    playerNum,
+    x: 0,
+    y: 0
+  });
+
   socket.on("move", data => {
 
     if (!players[socket.id]) return;
 
-    players[socket.id] = data;
+    players[socket.id] = {
+      ...players[socket.id],
+      ...data
+    };
 
     socket.broadcast.emit("playerMoved", {
       id: socket.id,
+      playerNum: players[socket.id].playerNum,
       ...data
     });
 

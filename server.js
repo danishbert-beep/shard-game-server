@@ -13,21 +13,18 @@ const io = new Server(server, {
 
 let players = {};
 
-
 const ROUND_DURATION_MS = 30000;
 let roundStartTime = Date.now();
 
-function getTimeLeftMs() {
-  const elapsed = Date.now() - roundStartTime;
-  return Math.max(0, ROUND_DURATION_MS - elapsed);
-}
-
 function resetRoundTimer() {
   roundStartTime = Date.now();
+
   io.emit("roundTimerSync", {
     roundStartTime,
     roundDurationMs: ROUND_DURATION_MS
   });
+
+  io.emit("roundReset");
 }
 
 function getUsedPlayerNums() {
@@ -66,13 +63,14 @@ function buildMachineOffsets() {
   return machineOffsets;
 }
 
-// broadcast shared machine state
+// broadcast shared machine motion
 setInterval(() => {
   sideMachineMover.t += sideMachineMover.speed;
   io.emit("machineOffsets", buildMachineOffsets());
 }, 1000 / 60);
 
 io.on("connection", socket => {
+
   const playerNum = getAvailablePlayerNum();
 
   if (playerNum === null) {
@@ -83,33 +81,40 @@ io.on("connection", socket => {
 
   players[socket.id] = {
     playerNum,
-    x: 0,
-    y: 0,
     topLeftX: 0,
     topLeftY: 0,
     attacking: false
-  }; 
+  };
 
   socket.emit("assignPlayerNum", playerNum);
-socket.emit("roundTimerSync", {
-  roundStartTime,
-  roundDurationMs: ROUND_DURATION_MS
-});
-  socket.emit("assignPlayerNum", playerNum);
+
   socket.emit("currentPlayers", players);
+
   socket.emit("machineOffsets", buildMachineOffsets());
+
+  socket.emit("roundTimerSync", {
+    roundStartTime,
+    roundDurationMs: ROUND_DURATION_MS
+  });
 
   socket.broadcast.emit("playerJoined", {
     id: socket.id,
     playerNum,
-    x: 0,
-    y: 0,
     topLeftX: 0,
     topLeftY: 0,
     attacking: false
   });
 
+  // start a fresh round when both players are present
+  if (Object.keys(players).length === 2) {
+    resetRoundTimer();
+  }
+
+  // -------------------------
+  // movement sync
+  // -------------------------
   socket.on("move", data => {
+
     if (!players[socket.id]) return;
 
     players[socket.id] = {
@@ -122,9 +127,14 @@ socket.emit("roundTimerSync", {
       playerNum: players[socket.id].playerNum,
       ...data
     });
+
   });
 
+  // -------------------------
+  // attack sync
+  // -------------------------
   socket.on("attackState", data => {
+
     if (!players[socket.id]) return;
 
     players[socket.id].attacking = !!data.attacking;
@@ -134,12 +144,27 @@ socket.emit("roundTimerSync", {
       playerNum: players[socket.id].playerNum,
       attacking: players[socket.id].attacking
     });
+
   });
 
-  socket.on("disconnect", () => {
-    delete players[socket.id];
-    io.emit("playerDisconnected", socket.id);
+  // -------------------------
+  // round reset request
+  // -------------------------
+  socket.on("requestRoundReset", () => {
+    resetRoundTimer();
   });
+
+  // -------------------------
+  // disconnect
+  // -------------------------
+  socket.on("disconnect", () => {
+
+    delete players[socket.id];
+
+    io.emit("playerDisconnected", socket.id);
+
+  });
+
 });
 
 server.listen(process.env.PORT || 3000, () => {
